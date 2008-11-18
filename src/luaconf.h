@@ -757,7 +757,20 @@ union luai_Cast { double l_d; long l_l; };
 ** without modifying the main part of the file.
 */
 
+#define LUA_MAX_ROTABLE_NAME      16
 
+/* LUA_OPTIMIZE_MEMORY:
+   0 - no optimizations
+   1 - optimize while maitaining full compatibility with the test suite
+   2 - aggresive optimizations (breaks compatibility with some tests)
+*/
+#ifndef LUA_OPTIMIZE_MEMORY
+#define LUA_OPTIMIZE_MEMORY				0
+#endif
+
+#if LUA_OPTIMIZE_MEMORY == 2 && LUA_USE_POPEN
+#error "Pipes not supported in aggresive optimization mode (LUA_OPTIMIZE_MEMORY=2)"
+#endif
 
 #endif
 

@@ -61,12 +61,13 @@ static TValue *index2adr (lua_State *L, int idx) {
     case LUA_REGISTRYINDEX: return registry(L);
     case LUA_ENVIRONINDEX: {
       Closure *func = curr_func(L);
-      sethvalue(L, &L->env, func->c.env);
+      sethvalue(L, &L->env, func ? func->c.env : hvalue(gt(L)));
       return &L->env;
     }
     case LUA_GLOBALSINDEX: return gt(L);
     default: {
       Closure *func = curr_func(L);
+      if (!func) return cast(TValue *, luaO_nilobject);
       idx = LUA_GLOBALSINDEX - idx;
       return (idx <= func->c.nupvalues)
                 ? &func->c.upvalue[idx-1]
@@ -81,7 +82,7 @@ static Table *getcurrenv (lua_State *L) {
     return hvalue(gt(L));  /* use global table as environment */
   else {
     Closure *func = curr_func(L);
-    return func->c.env;
+    return func ? func->c.env : hvalue(gt(L));
   }
 }
 
@@ -211,13 +212,17 @@ LUA_API void lua_replace (lua_State *L, int idx) {
   api_checkvalidindex(L, o);
   if (idx == LUA_ENVIRONINDEX) {
     Closure *func = curr_func(L);
-    api_check(L, ttistable(L->top - 1)); 
-    func->c.env = hvalue(L->top - 1);
-    luaC_barrier(L, func, L->top - 1);
+    if (!func)
+      luaG_runerror(L, "attempt to set environment on lightfunction");
+    else {
+      api_check(L, ttistable(L->top - 1)); 
+      func->c.env = hvalue(L->top - 1);
+      luaC_barrier(L, func, L->top - 1);
+    }
   }
   else {
     setobj(L, o, L->top - 1);
-    if (idx < LUA_GLOBALSINDEX)  /* function upvalue? */
+    if (curr_func(L) && idx < LUA_GLOBALSINDEX)  /* function upvalue? */
       luaC_barrier(L, curr_func(L), L->top - 1);
   }
   L->top--;
@@ -407,6 +412,9 @@ LUA_API const void *lua_topointer (lua_State *L, int idx) {
     case LUA_TUSERDATA:
     case LUA_TLIGHTUSERDATA:
       return lua_touserdata(L, idx);
+    case LUA_TROTABLE: 
+    case LUA_TLIGHTFUNCTION:
+      return pvalue(o);
     default: return NULL;
   }
 }
@@ -511,6 +519,20 @@ LUA_API void lua_pushboolean (lua_State *L, int b) {
 LUA_API void lua_pushlightuserdata (lua_State *L, void *p) {
   lua_lock(L);
   setpvalue(L->top, p);
+  api_incr_top(L);
+  lua_unlock(L);
+}
+
+LUA_API void lua_pushrotable (lua_State *L, void *p) {
+  lua_lock(L);
+  setrvalue(L->top, p);
+  api_incr_top(L);
+  lua_unlock(L);
+}
+
+LUA_API void lua_pushlightfunction(lua_State *L, void *p) {
+  lua_lock(L);
+  setfvalue(L->top, p);
   api_incr_top(L);
   lua_unlock(L);
 }

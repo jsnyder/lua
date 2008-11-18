@@ -18,7 +18,7 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
-
+#include "lrotable.h"
 
 /* macro to `unsign' a character */
 #define uchar(c)        ((unsigned char)(c))
@@ -618,7 +618,8 @@ static void add_value (MatchState *ms, luaL_Buffer *b, const char *s,
       add_s(ms, b, s, e);
       return;
     }
-    case LUA_TFUNCTION: {
+    case LUA_TFUNCTION:
+    case LUA_TLIGHTFUNCTION: {
       int n;
       lua_pushvalue(L, 3);
       n = push_captures(ms, s, e);
@@ -652,8 +653,9 @@ static int str_gsub (lua_State *L) {
   MatchState ms;
   luaL_Buffer b;
   luaL_argcheck(L, tr == LUA_TNUMBER || tr == LUA_TSTRING ||
-                   tr == LUA_TFUNCTION || tr == LUA_TTABLE, 3,
-                      "string/function/table expected");
+                   tr == LUA_TFUNCTION || tr == LUA_TTABLE ||
+                   tr == LUA_TLIGHTFUNCTION, 3,
+                   "string/function/table/lightfunction expected");
   luaL_buffinit(L, &b);
   ms.L = L;
   ms.src_init = src;
@@ -823,28 +825,55 @@ static int str_format (lua_State *L) {
   return 1;
 }
 
+/* Compile the correct version of "gfind" */
+#if LUA_OPTIMIZE_MEMORY > 0 && defined(LUA_COMPAT_GFIND)
+#define LUA_GFIND_DECL	{"gfind", gmatch}
+#else
+#define LUA_GFIND_DECL  {"gfind", gfind_nodef}
+#endif
 
+#define LUA_STRLIB_FUNCLIST\
+  {"byte", str_byte},\
+  {"char", str_char},\
+  {"dump", str_dump},\
+  {"find", str_find},\
+  {"format", str_format},\
+  LUA_GFIND_DECL,\
+  {"gmatch", gmatch},\
+  {"gsub", str_gsub},\
+  {"len", str_len},\
+  {"lower", str_lower},\
+  {"match", str_match},\
+  {"rep", str_rep},\
+  {"reverse", str_reverse},\
+  {"sub", str_sub},\
+  {"upper", str_upper}
+
+#if LUA_OPTIMIZE_MEMORY == 0
 static const luaL_Reg strlib[] = {
-  {"byte", str_byte},
-  {"char", str_char},
-  {"dump", str_dump},
-  {"find", str_find},
-  {"format", str_format},
-  {"gfind", gfind_nodef},
-  {"gmatch", gmatch},
-  {"gsub", str_gsub},
-  {"len", str_len},
-  {"lower", str_lower},
-  {"match", str_match},
-  {"rep", str_rep},
-  {"reverse", str_reverse},
-  {"sub", str_sub},
-  {"upper", str_upper},
+  LUA_STRLIB_FUNCLIST,
+  {NULL, NULL}
+};
+#else
+static const luaL_Reg strlib_funcs[] = {
+  LUA_STRLIB_FUNCLIST,
   {NULL, NULL}
 };
 
+static int str_index(lua_State *L)
+{
+  return luaR_findfunction(L, strlib_funcs);
+}
+
+static const luaL_Reg strlib[] = {
+  {"__index", str_index},
+  {NULL, NULL}
+};
+#endif
+
 
 static void createmetatable (lua_State *L) {
+#if LUA_OPTIMIZE_MEMORY == 0
   lua_createtable(L, 0, 1);  /* create metatable for strings */
   lua_pushliteral(L, "");  /* dummy string */
   lua_pushvalue(L, -2);
@@ -853,6 +882,12 @@ static void createmetatable (lua_State *L) {
   lua_pushvalue(L, -2);  /* string library... */
   lua_setfield(L, -2, "__index");  /* ...is the __index metamethod */
   lua_pop(L, 1);  /* pop metatable */
+#else
+  lua_pushliteral(L,"");
+  lua_pushvalue(L, -2);
+  lua_setmetatable(L, -2);
+  lua_pop(L, 1);
+#endif
 }
 
 
@@ -861,11 +896,13 @@ static void createmetatable (lua_State *L) {
 */
 LUALIB_API int luaopen_string (lua_State *L) {
   luaL_register(L, LUA_STRLIBNAME, strlib);
-#if defined(LUA_COMPAT_GFIND)
+#if LUA_OPTIMIZE_MEMORY > 0
+  lua_pushvalue(L, -1);
+  lua_setmetatable(L, -2);
+#elif defined(LUA_COMPAT_GFIND)
   lua_getfield(L, -1, "gmatch");
   lua_setfield(L, -2, "gfind");
 #endif
   createmetatable(L);
-  return 1;
+  return 1;  
 }
-

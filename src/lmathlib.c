@@ -15,7 +15,7 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
-
+#include "lrotable.h"
 
 #undef PI
 #define PI (3.14159265358979323846)
@@ -212,19 +212,22 @@ static int math_randomseed (lua_State *L) {
 }
 
 
-static const luaL_Reg mathlib[] = {
+const luaL_reg mathlib[] = {
   {"abs",   math_abs},
   {"acos",  math_acos},
   {"asin",  math_asin},
   {"atan2", math_atan2},
   {"atan",  math_atan},
   {"ceil",  math_ceil},
-  {"cosh",   math_cosh},
+  {"cosh",  math_cosh},
   {"cos",   math_cos},
   {"deg",   math_deg},
   {"exp",   math_exp},
   {"floor", math_floor},
-  {"fmod",   math_fmod},
+  {"fmod",  math_fmod},
+#if LUA_OPTIMIZE_MEMORY > 0 && defined(LUA_COMPAT_MOD)
+  {"mod",   math_fmod}, 
+#endif
   {"frexp", math_frexp},
   {"ldexp", math_ldexp},
   {"log10", math_log10},
@@ -244,11 +247,19 @@ static const luaL_Reg mathlib[] = {
   {NULL, NULL}
 };
 
+const luaR_value_entry mathlib_vals[] = {
+  {"pi",   PI},
+  {"huge", HUGE_VAL},
+  {NULL, 0}
+};
 
 /*
 ** Open math library
 */
 LUALIB_API int luaopen_math (lua_State *L) {
+#if LUA_OPTIMIZE_MEMORY > 0
+  return 0;
+#else
   luaL_register(L, LUA_MATHLIBNAME, mathlib);
   lua_pushnumber(L, PI);
   lua_setfield(L, -2, "pi");
@@ -259,5 +270,6 @@ LUALIB_API int luaopen_math (lua_State *L) {
   lua_setfield(L, -2, "mod");
 #endif
   return 1;
+#endif
 }
 

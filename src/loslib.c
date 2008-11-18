@@ -217,7 +217,7 @@ static int os_exit (lua_State *L) {
   exit(luaL_optint(L, 1, EXIT_SUCCESS));
 }
 
-static const luaL_Reg syslib[] = {
+const luaL_Reg syslib[] = {
   {"clock",     os_clock},
   {"date",      os_date},
   {"difftime",  os_difftime},
@@ -237,7 +237,11 @@ static const luaL_Reg syslib[] = {
 
 
 LUALIB_API int luaopen_os (lua_State *L) {
+#if LUA_OPTIMIZE_MEMORY > 0
+  return 0;
+#else
   luaL_register(L, LUA_OSLIBNAME, syslib);
   return 1;
+#endif
 }
 

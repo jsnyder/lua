@@ -22,6 +22,8 @@
 
 #include "lua.h"
 
+#include "lrotable.h"
+
 #include "lauxlib.h"
 
 
@@ -32,6 +34,9 @@
 #define abs_index(L, i)		((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : \
 					lua_gettop(L) + (i) + 1)
 
+// Parameters for luaI_openlib
+#define LUA_USECCLOSURES          0
+#define LUA_USELIGHTFUNCTIONS     1
 
 /*
 ** {======================================================
@@ -148,6 +153,14 @@ LUALIB_API void luaL_checktype (lua_State *L, int narg, int t) {
     tag_error(L, narg, t);
 }
 
+LUALIB_API void luaL_checkanyfunction (lua_State *L, int narg) {
+  if (lua_type(L, narg) != LUA_TFUNCTION && lua_type(L, narg) != LUA_TLIGHTFUNCTION) {
+    const char *msg = lua_pushfstring(L, "function or lightfunction expected, got %s",
+                                      luaL_typename(L, narg));
+    luaL_argerror(L, narg, msg);    
+  }
+}
+
 
 LUALIB_API void luaL_checkany (lua_State *L, int narg) {
   if (lua_type(L, narg) == LUA_TNONE)
@@ -228,9 +241,17 @@ LUALIB_API int luaL_callmeta (lua_State *L, int obj, const char *event) {
 
 LUALIB_API void (luaL_register) (lua_State *L, const char *libname,
                                 const luaL_Reg *l) {
-  luaI_openlib(L, libname, l, 0);
+  luaI_openlib(L, libname, l, 0, LUA_USECCLOSURES);
 }
 
+LUALIB_API void (luaL_register_light) (lua_State *L, const char *libname,
+                                const luaL_Reg *l) {
+#if LUA_OPTIMIZE_MEMORY > 0                              
+  luaI_openlib(L, libname, l, 0, LUA_USELIGHTFUNCTIONS);
+#else
+  luaI_openlib(L, libname, l, 0, LUA_USECCLOSURES);
+#endif  
+}
 
 static int libsize (const luaL_Reg *l) {
   int size = 0;
@@ -240,7 +261,7 @@ static int libsize (const luaL_Reg *l) {
 
 
 LUALIB_API void luaI_openlib (lua_State *L, const char *libname,
-                              const luaL_Reg *l, int nup) {
+                              const luaL_Reg *l, int nup, int ftype) {
   if (libname) {
     int size = libsize(l);
     /* check whether lib already exists */
@@ -261,7 +282,10 @@ LUALIB_API void luaI_openlib (lua_State *L, const char *libname,
     int i;
     for (i=0; i<nup; i++)  /* copy upvalues to the top */
       lua_pushvalue(L, -nup);
-    lua_pushcclosure(L, l->func, nup);
+    if (ftype == LUA_USELIGHTFUNCTIONS)
+      lua_pushlightfunction(L, l->func);
+    else
+      lua_pushcclosure(L, l->func, nup);
     lua_setfield(L, -(nup+2), l->name);
   }
   lua_pop(L, nup);  /* remove upvalues */
@@ -364,6 +388,15 @@ LUALIB_API const char *luaL_findtable (lua_State *L, int idx,
     lua_pushlstring(L, fname, e - fname);
     lua_rawget(L, -2);
     if (lua_isnil(L, -1)) {  /* no such field? */
+      /* Check for rotables */
+      if (idx == LUA_GLOBALSINDEX) {
+        lu_byte keytype;
+        luaR_findglobal(fname, &keytype);
+        if (keytype == LUA_TROTABLE) {
+          lua_pop(L, 2);
+          return fname;
+        }
+      }
       lua_pop(L, 1);  /* remove this nil */
       lua_createtable(L, 0, (*e == '.' ? 1 : szhint)); /* new table for field */
       lua_pushlstring(L, fname, e - fname);

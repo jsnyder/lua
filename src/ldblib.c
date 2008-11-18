@@ -107,7 +107,7 @@ static int db_getinfo (lua_State *L) {
       return 1;
     }
   }
-  else if (lua_isfunction(L, arg+1)) {
+  else if (lua_isfunction(L, arg+1) || lua_islightfunction(L, arg+1)) {
     lua_pushfstring(L, ">%s", options);
     options = lua_tostring(L, -1);
     lua_pushvalue(L, arg+1);
@@ -265,7 +265,7 @@ static int db_sethook (lua_State *L) {
   }
   else {
     const char *smask = luaL_checkstring(L, arg+2);
-    luaL_checktype(L, arg+1, LUA_TFUNCTION);
+    luaL_checkanyfunction(L, arg+1);
     count = luaL_optint(L, arg+3, 0);
     func = hookf; mask = makemask(smask, count);
   }
@@ -372,7 +372,7 @@ static int db_errorfb (lua_State *L) {
 }
 
 
-static const luaL_Reg dblib[] = {
+const luaL_Reg dblib[] = {
   {"debug", db_debug},
   {"getfenv", db_getfenv},
   {"gethook", db_gethook},
@@ -392,7 +392,11 @@ static const luaL_Reg dblib[] = {
 
 
 LUALIB_API int luaopen_debug (lua_State *L) {
+#if LUA_OPTIMIZE_MEMORY > 0
+  return 0;
+#else
   luaL_register(L, LUA_DBLIBNAME, dblib);
   return 1;
+#endif
 }
 

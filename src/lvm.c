@@ -25,7 +25,7 @@
 #include "ltable.h"
 #include "ltm.h"
 #include "lvm.h"
-
+#include "lrotable.h"
 
 
 /* limit for table tag-method chains (to avoid loops) */
@@ -104,9 +104,31 @@ static void callTM (lua_State *L, const TValue *f, const TValue *p1,
   luaD_call(L, L->top - 4, 0);
 }
 
+static void lua_getcstr(char *dest, const TString *src, size_t maxsize) {
+  if (src->tsv.len+1 > maxsize)
+    dest[0] = '\0';
+  else {
+    memcpy(dest, getstr(src), src->tsv.len);
+    dest[src->tsv.len] = '\0';
+  } 
+}
 
-void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+void luaV_gettable(lua_State *L, const TValue *t, TValue *key, StkId val) {
   int loop;
+  if (ttisrotable(t)) {
+    setnilvalue(val);
+    if (ttisstring(key)) {
+      char keyname[LUA_MAX_ROTABLE_NAME + 1];
+      lu_byte keytype;
+      lua_getcstr(keyname, rawtsvalue(key), LUA_MAX_ROTABLE_NAME);      
+      luaR_result res = luaR_findentry(rvalue(t), keyname, &keytype);
+      if (keytype == LUA_TLIGHTFUNCTION)
+        setfvalue(val, (void*)(size_t)res)
+      else if (keytype == LUA_TNUMBER)
+        setnvalue(val, (lua_Number)res)
+    }
+    return;
+  }
   for (loop = 0; loop < MAXTAGLOOP; loop++) {
     const TValue *tm;
     if (ttistable(t)) {  /* `t' is a table? */
@@ -121,7 +143,7 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
     }
     else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_INDEX)))
       luaG_typeerror(L, t, "index");
-    if (ttisfunction(tm)) {
+    if (ttisfunction(tm) || ttislightfunction(tm)) {
       callTMres(L, val, tm, t, key);
       return;
     }
@@ -258,7 +280,10 @@ int luaV_equalval (lua_State *L, const TValue *t1, const TValue *t2) {
     case LUA_TNIL: return 1;
     case LUA_TNUMBER: return luai_numeq(nvalue(t1), nvalue(t2));
     case LUA_TBOOLEAN: return bvalue(t1) == bvalue(t2);  /* true must be 1 !! */
-    case LUA_TLIGHTUSERDATA: return pvalue(t1) == pvalue(t2);
+    case LUA_TLIGHTUSERDATA: 
+    case LUA_TROTABLE:
+    case LUA_TLIGHTFUNCTION:
+      return pvalue(t1) == pvalue(t2);
     case LUA_TUSERDATA: {
       if (uvalue(t1) == uvalue(t2)) return 1;
       tm = get_compTM(L, uvalue(t1)->metatable, uvalue(t2)->metatable,
@@ -433,7 +458,21 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         TValue *rb = KBx(i);
         sethvalue(L, &g, cl->env);
         lua_assert(ttisstring(rb));
-        Protect(luaV_gettable(L, &g, rb, ra));
+#if LUA_OPTIMIZE_MEMORY > 0
+        /* First try to look for a rotable with this name */
+        char keyname[LUA_MAX_ROTABLE_NAME + 1];
+        lu_byte keytype;
+        lua_getcstr(keyname, rawtsvalue(rb), LUA_MAX_ROTABLE_NAME);
+        luaR_result res = luaR_findglobal(keyname, &keytype);
+        if (keytype == LUA_TROTABLE)
+          setrvalue(ra, (void*)(size_t)res)
+        else if (keytype == LUA_TLIGHTFUNCTION)
+          setfvalue(ra, (void*)(size_t)res)
+        else if (keytype == LUA_TNUMBER)
+          setnvalue(ra, (lua_Number)res)        
+        else 
+#endif
+          Protect(luaV_gettable(L, &g, rb, ra));
         continue;
       }
       case OP_GETTABLE: {

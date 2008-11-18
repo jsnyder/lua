@@ -106,6 +106,8 @@ static Node *mainposition (const Table *t, const TValue *key) {
     case LUA_TBOOLEAN:
       return hashboolean(t, bvalue(key));
     case LUA_TLIGHTUSERDATA:
+    case LUA_TROTABLE:
+    case LUA_TLIGHTFUNCTION:
       return hashpointer(t, pvalue(key));
     default:
       return hashpointer(t, gcvalue(key));

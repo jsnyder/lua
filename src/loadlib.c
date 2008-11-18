@@ -20,7 +20,7 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
-
+#include "lrotable.h"
 
 /* prefix for open functions in C libraries */
 #define LUA_POF		"luaopen_"
@@ -459,6 +459,14 @@ static int ll_require (lua_State *L) {
       luaL_error(L, "loop or previous error loading module " LUA_QS, name);
     return 1;  /* package is already loaded */
   }
+  // Is this a readonly table?
+  lu_byte keytype;
+  luaR_result res = luaR_findglobal(name, &keytype);
+  if (keytype == LUA_TROTABLE) {
+    lua_pushrotable(L, (void*)(size_t)res);
+    return 1;
+  }
+  
   /* else must load it; iterate over available loaders */
   lua_getfield(L, LUA_ENVIRONINDEX, "loaders");
   if (!lua_istable(L, -1))
@@ -628,10 +636,10 @@ LUALIB_API int luaopen_package (lua_State *L) {
   int i;
   /* create new type _LOADLIB */
   luaL_newmetatable(L, "_LOADLIB");
-  lua_pushcfunction(L, gctm);
+  lua_pushlightfunction(L, gctm);
   lua_setfield(L, -2, "__gc");
   /* create `package' table */
-  luaL_register(L, LUA_LOADLIBNAME, pk_funcs);
+  luaL_register_light(L, LUA_LOADLIBNAME, pk_funcs);
 #if defined(LUA_COMPAT_LOADLIB) 
   lua_getfield(L, -1, "loadlib");
   lua_setfield(L, LUA_GLOBALSINDEX, "loadlib");

@@ -18,6 +18,7 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
+#include "lrotable.h"
 
 
 
@@ -444,33 +445,53 @@ static int luaB_newproxy (lua_State *L) {
 }
 
 
+#define LUA_BASE_FUNCLIST\
+  {"assert", luaB_assert},\
+  {"collectgarbage", luaB_collectgarbage},\
+  {"dofile", luaB_dofile},\
+  {"error", luaB_error},\
+  {"gcinfo", luaB_gcinfo},\
+  {"getfenv", luaB_getfenv},\
+  {"getmetatable", luaB_getmetatable},\
+  {"loadfile", luaB_loadfile},\
+  {"load", luaB_load},\
+  {"loadstring", luaB_loadstring},\
+  {"next", luaB_next},\
+  {"pcall", luaB_pcall},\
+  {"print", luaB_print},\
+  {"rawequal", luaB_rawequal},\
+  {"rawget", luaB_rawget},\
+  {"rawset", luaB_rawset},\
+  {"select", luaB_select},\
+  {"setfenv", luaB_setfenv},\
+  {"setmetatable", luaB_setmetatable},\
+  {"tonumber", luaB_tonumber},\
+  {"tostring", luaB_tostring},\
+  {"type", luaB_type},\
+  {"unpack", luaB_unpack},\
+  {"xpcall", luaB_xpcall}
+
+#if LUA_OPTIMIZE_MEMORY != 2
 static const luaL_Reg base_funcs[] = {
-  {"assert", luaB_assert},
-  {"collectgarbage", luaB_collectgarbage},
-  {"dofile", luaB_dofile},
-  {"error", luaB_error},
-  {"gcinfo", luaB_gcinfo},
-  {"getfenv", luaB_getfenv},
-  {"getmetatable", luaB_getmetatable},
-  {"loadfile", luaB_loadfile},
-  {"load", luaB_load},
-  {"loadstring", luaB_loadstring},
-  {"next", luaB_next},
-  {"pcall", luaB_pcall},
-  {"print", luaB_print},
-  {"rawequal", luaB_rawequal},
-  {"rawget", luaB_rawget},
-  {"rawset", luaB_rawset},
-  {"select", luaB_select},
-  {"setfenv", luaB_setfenv},
-  {"setmetatable", luaB_setmetatable},
-  {"tonumber", luaB_tonumber},
-  {"tostring", luaB_tostring},
-  {"type", luaB_type},
-  {"unpack", luaB_unpack},
-  {"xpcall", luaB_xpcall},
+  LUA_BASE_FUNCLIST,
   {NULL, NULL}
 };
+#else
+static const luaL_Reg base_realfuncs[] = {
+  LUA_BASE_FUNCLIST,
+  {NULL, NULL}
+};
+
+static int luaB_index(lua_State *L)
+{
+  return luaR_findfunction(L, base_realfuncs);
+}
+
+static const luaL_Reg base_funcs[] = {
+  {"__index", luaB_index},
+  {NULL, NULL}
+};
+#endif
 
 
 /*
@@ -602,7 +623,7 @@ static int luaB_corunning (lua_State *L) {
 }
 
 
-static const luaL_Reg co_funcs[] = {
+const luaL_Reg co_funcs[] = {
   {"create", luaB_cocreate},
   {"resume", luaB_coresume},
   {"running", luaB_corunning},
@@ -628,7 +649,11 @@ static void base_open (lua_State *L) {
   lua_pushvalue(L, LUA_GLOBALSINDEX);
   lua_setglobal(L, "_G");
   /* open lib into global table */
-  luaL_register(L, "_G", base_funcs);
+  luaL_register_light(L, "_G", base_funcs);
+#if LUA_OPTIMIZE_MEMORY == 2
+  lua_pushvalue(L, -1);
+  lua_setmetatable(L, -2);
+#endif
   lua_pushliteral(L, LUA_VERSION);
   lua_setglobal(L, "_VERSION");  /* set global _VERSION */
   /* `ipairs' and `pairs' need auxliliary functions as upvalues */
@@ -647,7 +672,11 @@ static void base_open (lua_State *L) {
 
 LUALIB_API int luaopen_base (lua_State *L) {
   base_open(L);
+#if LUA_OPTIMIZE_MEMORY == 0
   luaL_register(L, LUA_COLIBNAME, co_funcs);
   return 2;
+#else
+  return 1;
+#endif
 }
 

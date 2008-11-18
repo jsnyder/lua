@@ -22,7 +22,7 @@
 static int foreachi (lua_State *L) {
   int i;
   int n = aux_getn(L, 1);
-  luaL_checktype(L, 2, LUA_TFUNCTION);
+  luaL_checkanyfunction(L, 2);
   for (i=1; i <= n; i++) {
     lua_pushvalue(L, 2);  /* function */
     lua_pushinteger(L, i);  /* 1st argument */
@@ -38,7 +38,7 @@ static int foreachi (lua_State *L) {
 
 static int foreach (lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
-  luaL_checktype(L, 2, LUA_TFUNCTION);
+  luaL_checkanyfunction(L, 2);
   lua_pushnil(L);  /* first key */
   while (lua_next(L, 1)) {
     lua_pushvalue(L, 2);  /* function */
@@ -266,7 +266,7 @@ static int sort (lua_State *L) {
 /* }====================================================== */
 
 
-static const luaL_Reg tab_funcs[] = {
+const luaL_Reg tab_funcs[] = {
   {"concat", tconcat},
   {"foreach", foreach},
   {"foreachi", foreachi},
@@ -281,7 +281,10 @@ static const luaL_Reg tab_funcs[] = {
 
 
 LUALIB_API int luaopen_table (lua_State *L) {
+#if LUA_OPTIMIZE_MEMORY > 0
+  return 0;
+#else
   luaL_register(L, LUA_TABLIBNAME, tab_funcs);
   return 1;
+#endif
 }
-
