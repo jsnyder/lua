@@ -1,5 +1,5 @@
 /*
-** $Id: lauxlib.h,v 1.108 2010/07/02 11:38:13 roberto Exp $
+** $Id: lauxlib.h,v 1.113 2010/11/16 19:20:01 roberto Exp $
 ** Auxiliary functions for building Lua libraries
 ** See Copyright Notice in lua.h
 */
@@ -32,7 +32,6 @@ LUALIB_API void (luaL_checkversion_) (lua_State *L, lua_Number ver);
 LUALIB_API int (luaL_getmetafield) (lua_State *L, int obj, const char *e);
 LUALIB_API int (luaL_callmeta) (lua_State *L, int obj, const char *e);
 LUALIB_API const char *(luaL_tolstring) (lua_State *L, int idx, size_t *len);
-LUALIB_API int (luaL_typeerror) (lua_State *L, int narg, const char *tname);
 LUALIB_API int (luaL_argerror) (lua_State *L, int numarg, const char *extramsg);
 LUALIB_API const char *(luaL_checklstring) (lua_State *L, int numArg,
                                                           size_t *l);
@@ -44,12 +43,16 @@ LUALIB_API lua_Number (luaL_optnumber) (lua_State *L, int nArg, lua_Number def);
 LUALIB_API lua_Integer (luaL_checkinteger) (lua_State *L, int numArg);
 LUALIB_API lua_Integer (luaL_optinteger) (lua_State *L, int nArg,
                                           lua_Integer def);
+LUALIB_API lua_Unsigned (luaL_checkunsigned) (lua_State *L, int numArg);
+LUALIB_API lua_Unsigned (luaL_optunsigned) (lua_State *L, int numArg,
+                                            lua_Unsigned def);
 
 LUALIB_API void (luaL_checkstack) (lua_State *L, int sz, const char *msg);
 LUALIB_API void (luaL_checktype) (lua_State *L, int narg, int t);
 LUALIB_API void (luaL_checkany) (lua_State *L, int narg);
 
 LUALIB_API int   (luaL_newmetatable) (lua_State *L, const char *tname);
+LUALIB_API void  (luaL_setmetatable) (lua_State *L, const char *tname);
 LUALIB_API void *(luaL_testudata) (lua_State *L, int ud, const char *tname);
 LUALIB_API void *(luaL_checkudata) (lua_State *L, int ud, const char *tname);
 
@@ -58,6 +61,10 @@ LUALIB_API int (luaL_error) (lua_State *L, const char *fmt, ...);
 
 LUALIB_API int (luaL_checkoption) (lua_State *L, int narg, const char *def,
                                    const char *const lst[]);
+
+/* pre-defined references */
+#define LUA_NOREF       (-2)
+#define LUA_REFNIL      (-1)
 
 LUALIB_API int (luaL_ref) (lua_State *L, int t);
 LUALIB_API void (luaL_unref) (lua_State *L, int t, int ref);
@@ -117,8 +124,6 @@ LUALIB_API void (luaL_requiref) (lua_State *L, const char *modname,
 
 #define luaL_opt(L,f,n,d)	(lua_isnoneornil(L,(n)) ? (d) : f(L,(n)))
 
-#define luaL_register(L,n,l)	(luaL_openlib(L,(n),(l),0))
-
 
 /*
 ** {======================================================
@@ -155,27 +160,14 @@ LUALIB_API char *(luaL_buffinitsize) (lua_State *L, luaL_Buffer *B, size_t sz);
 /* }====================================================== */
 
 
+/* compatibility with old module system */
+
 LUALIB_API void (luaL_pushmodule) (lua_State *L, const char *modname,
                                    int sizehint);
 LUALIB_API void (luaL_openlib) (lua_State *L, const char *libname,
                                 const luaL_Reg *l, int nup);
 
-
-/* compatibility with ref system */
-
-/* pre-defined references */
-#define LUA_NOREF       (-2)
-#define LUA_REFNIL      (-1)
-
-#define lua_ref(L,lock) ((lock) ? luaL_ref(L, LUA_REGISTRYINDEX) : \
-      (lua_pushstring(L, "unlocked references are obsolete"), lua_error(L), 0))
-
-#define lua_unref(L,ref)        luaL_unref(L, LUA_REGISTRYINDEX, (ref))
-
-#define lua_getref(L,ref)       lua_rawgeti(L, LUA_REGISTRYINDEX, (ref))
-
-
-#define luaL_reg	luaL_Reg
+#define luaL_register(L,n,l)	(luaL_openlib(L,(n),(l),0))
 
 
 #endif

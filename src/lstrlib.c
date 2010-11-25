@@ -1,5 +1,5 @@
 /*
-** $Id: lstrlib.c,v 1.154 2010/07/02 11:38:13 roberto Exp $
+** $Id: lstrlib.c,v 1.159 2010/11/19 16:25:51 roberto Exp $
 ** Standard library for string operations and pattern-matching
 ** See Copyright Notice in lua.h
 */
@@ -424,7 +424,7 @@ static const char *match (MatchState *ms, const char *s, const char *p) {
         default: goto dflt;
       }
     }
-    default: dflt: {  /* pattern class plus optional sufix */
+    default: dflt: {  /* pattern class plus optional suffix */
       const char *ep = classend(ms, p);  /* points to what is next */
       int m = s < ms->src_end && singlematch(uchar(*s), p, ep);
       switch (*ep) {
@@ -505,6 +505,18 @@ static int push_captures (MatchState *ms, const char *s, const char *e) {
 }
 
 
+/* check whether pattern has no special characters */
+static int nospecials (const char *p, size_t l) {
+  size_t upto = 0;
+  do {
+    if (strpbrk(p + upto, SPECIALS))
+      return 0;  /* pattern has a special character */ 
+    upto += strlen(p + upto) + 1;  /* may have more after \0 */
+  } while (upto <= l);
+  return 1;  /* no special chars found */
+}
+
+
 static int str_find_aux (lua_State *L, int find) {
   size_t ls, lp;
   const char *s = luaL_checklstring(L, 1, &ls);
@@ -515,8 +527,8 @@ static int str_find_aux (lua_State *L, int find) {
     lua_pushnil(L);  /* cannot find anything */
     return 1;
   }
-  if (find && (lua_toboolean(L, 4) ||  /* explicit request? */
-      strpbrk(p, SPECIALS) == NULL)) {  /* or no special characters? */
+  /* explicit request or no special characters? */
+  if (find && (lua_toboolean(L, 4) || nospecials(p, lp))) {
     /* do a plain search */
     const char *s2 = lmemfind(s + init - 1, ls - init + 1, p, lp);
     if (s2) {
@@ -599,12 +611,6 @@ static int gmatch (lua_State *L) {
   lua_pushinteger(L, 0);
   lua_pushcclosure(L, gmatch_aux, 3);
   return 1;
-}
-
-
-static int gfind_nodef (lua_State *L) {
-  return luaL_error(L, LUA_QL("string.gfind") " was renamed to "
-                       LUA_QL("string.gmatch"));
 }
 
 
@@ -722,6 +728,7 @@ static int str_gsub (lua_State *L) {
 ** 'string.format'; LUA_INTFRM_T is the integer type corresponding to
 ** the previous length
 */
+#if !defined(LUA_INTFRMLEN)	/* { */
 #if defined(LUA_USELONGLONG)
 
 #define LUA_INTFRMLEN           "ll"
@@ -731,6 +738,20 @@ static int str_gsub (lua_State *L) {
 
 #define LUA_INTFRMLEN           "l"
 #define LUA_INTFRM_T            long
+
+#endif
+#endif				/* } */
+
+
+/*
+** LUA_FLTFRMLEN is the length modifier for float conversions in
+** 'string.format'; LUA_FLTFRM_T is the float type corresponding to
+** the previous length
+*/
+#if !defined(LUA_FLTFRMLEN)
+
+#define LUA_FLTFRMLEN           ""
+#define LUA_FLTFRM_T            double
 
 #endif
 
@@ -758,9 +779,9 @@ static void addquoted (lua_State *L, luaL_Buffer *b, int arg) {
     else if (*s == '\0' || iscntrl(uchar(*s))) {
       char buff[10];
       if (!isdigit(uchar(*(s+1))))
-        sprintf(buff, "\\%d", uchar(*s));
+        sprintf(buff, "\\%d", (int)uchar(*s));
       else
-        sprintf(buff, "\\%03d", uchar(*s));
+        sprintf(buff, "\\%03d", (int)uchar(*s));
       luaL_addstring(b, buff);
     }
     else
@@ -793,14 +814,15 @@ static const char *scanformat (lua_State *L, const char *strfrmt, char *form) {
 
 
 /*
-** add length modifier into integer formats
+** add length modifier into formats
 */
-static void addintlen (char *form) {
+static void addlenmod (char *form, const char *lenmod) {
   size_t l = strlen(form);
+  size_t lm = strlen(lenmod);
   char spec = form[l - 1];
-  strcpy(form + l - 1, LUA_INTFRMLEN);
-  form[l + sizeof(LUA_INTFRMLEN) - 2] = spec;
-  form[l + sizeof(LUA_INTFRMLEN) - 1] = '\0';
+  strcpy(form + l - 1, lenmod);
+  form[l + lm - 1] = spec;
+  form[l + lm] = '\0';
 }
 
 
@@ -834,13 +856,14 @@ static int str_format (lua_State *L) {
           lua_Number n = luaL_checknumber(L, arg);
           LUA_INTFRM_T r = (n < 0) ? (LUA_INTFRM_T)n :
                                      (LUA_INTFRM_T)(unsigned LUA_INTFRM_T)n;
-          addintlen(form);
+          addlenmod(form, LUA_INTFRMLEN);
           nb = sprintf(buff, form, r);
           break;
         }
         case 'e':  case 'E': case 'f':
         case 'g': case 'G': {
-          nb = sprintf(buff, form, (double)luaL_checknumber(L, arg));
+          addlenmod(form, LUA_FLTFRMLEN);
+          nb = sprintf(buff, form, (LUA_FLTFRM_T)luaL_checknumber(L, arg));
           break;
         }
         case 'q': {
@@ -883,7 +906,6 @@ static const luaL_Reg strlib[] = {
   {"dump", str_dump},
   {"find", str_find},
   {"format", str_format},
-  {"gfind", gfind_nodef},
   {"gmatch", gmatch},
   {"gsub", str_gsub},
   {"len", str_len},

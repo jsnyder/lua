@@ -1,5 +1,5 @@
 /*
-** $Id: loadlib.c,v 1.89 2010/07/28 15:51:59 roberto Exp $
+** $Id: loadlib.c,v 1.94 2010/11/10 20:00:04 roberto Exp $
 ** Dynamic library loader for Lua
 ** See Copyright Notice in lua.h
 **
@@ -177,7 +177,7 @@ static void ll_unloadlib (void *lib) {
 
 static void *ll_load (lua_State *L, const char *path, int seeglb) {
   HMODULE lib = LoadLibraryExA(path, NULL, LUA_LLE_FLAGS);
-  (void)(seeglb);  /* symbols are 'global' by default? */
+  (void)(seeglb);  /* symbols are 'global' by default */
   if (lib == NULL) pusherror(L);
   return lib;
 }
@@ -212,7 +212,7 @@ static void ll_unloadlib (void *lib) {
 
 
 static void *ll_load (lua_State *L, const char *path, int seeglb) {
-  (void)(path);  /* to avoid warnings */
+  (void)(path); (void)(seeglb);  /* to avoid warnings */
   lua_pushliteral(L, DLMSG);
   return NULL;
 }
@@ -239,8 +239,7 @@ static void **ll_register (lua_State *L, const char *path) {
     lua_pop(L, 1);  /* remove result from gettable */
     plib = (void **)lua_newuserdata(L, sizeof(const void *));
     *plib = NULL;
-    luaL_getmetatable(L, "_LOADLIB");
-    lua_setmetatable(L, -2);
+    luaL_setmetatable(L, "_LOADLIB");
     lua_pushfstring(L, "%s%s", LIBPREFIX, path);
     lua_pushvalue(L, -2);
     lua_settable(L, LUA_REGISTRYINDEX);
@@ -428,17 +427,11 @@ static int loader_Croot (lua_State *L) {
 static int loader_preload (lua_State *L) {
   const char *name = luaL_checkstring(L, 1);
   lua_getfield(L, LUA_REGISTRYINDEX, "_PRELOAD");
-  if (!lua_istable(L, -1))
-    luaL_error(L, LUA_QL("package.preload") " must be a table");
   lua_getfield(L, -1, name);
   if (lua_isnil(L, -1))  /* not found? */
     lua_pushfstring(L, "\n\tno field package.preload['%s']", name);
   return 1;
 }
-
-
-static const int sentinel_ = 0;
-#define sentinel	((void *)&sentinel_)
 
 
 static int ll_require (lua_State *L) {
@@ -447,11 +440,8 @@ static int ll_require (lua_State *L) {
   lua_settop(L, 1);  /* _LOADED table will be at index 2 */
   lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
   lua_getfield(L, 2, name);
-  if (lua_toboolean(L, -1)) {  /* is it there? */
-    if (lua_touserdata(L, -1) == sentinel)  /* check loops */
-      luaL_error(L, "loop or previous error loading module " LUA_QS, name);
+  if (lua_toboolean(L, -1))  /* is it there? */
     return 1;  /* package is already loaded */
-  }
   /* else must load it; iterate over available loaders */
   lua_getfield(L, lua_upvalueindex(1), "loaders");
   if (!lua_istable(L, -1))
@@ -471,14 +461,12 @@ static int ll_require (lua_State *L) {
     else
       lua_pop(L, 1);
   }
-  lua_pushlightuserdata(L, sentinel);
-  lua_setfield(L, 2, name);  /* _LOADED[name] = sentinel */
   lua_pushstring(L, name);  /* pass name as argument to module */
   lua_call(L, 1, 1);  /* run loaded module */
   if (!lua_isnil(L, -1))  /* non-nil return? */
     lua_setfield(L, 2, name);  /* _LOADED[name] = returned value */
   lua_getfield(L, 2, name);
-  if (lua_touserdata(L, -1) == sentinel) {   /* module did not set a value? */
+  if (lua_isnil(L, -1)) {   /* module did not set a value? */
     lua_pushboolean(L, 1);  /* use true as result */
     lua_pushvalue(L, -1);  /* extra copy to be returned */
     lua_setfield(L, 2, name);  /* _LOADED[name] = true */
@@ -498,7 +486,7 @@ static int ll_require (lua_State *L) {
 #if defined(LUA_COMPAT_MODULE)
 
 /*
-** changes the _ENV variable of calling function
+** changes the environment variable of calling function
 */
 static void set_env (lua_State *L) {
   lua_Debug ar;
