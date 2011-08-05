@@ -1,5 +1,5 @@
 /*
-** $Id: luac.c,v 1.65 2010/10/26 09:07:52 lhf Exp $
+** $Id: luac.c,v 1.67 2011/06/21 12:29:00 lhf Exp $
 ** Lua compiler (saves bytecodes to files; also list bytecodes)
 ** See Copyright Notice in lua.h
 */
@@ -143,9 +143,12 @@ static const Proto* combine(lua_State* L, int n)
   int i=n;
   if (lua_load(L,reader,&i,"=(" PROGNAME ")")!=LUA_OK) fatal(lua_tostring(L,-1));
   f=toproto(L,-1);
-  for (i=0; i<n; i++) f->p[i]=toproto(L,i-n-1);
+  for (i=0; i<n; i++)
+  {
+   f->p[i]=toproto(L,i-n-1);
+   if (f->p[i]->sizeupvalues>0) f->p[i]->upvalues[0].instack=0;
+  }
   f->sizelineinfo=0;
-  f->sizeupvalues=0;
   return f;
  }
 }
@@ -159,7 +162,7 @@ static int writer(lua_State* L, const void* p, size_t size, void* u)
 static int pmain(lua_State* L)
 {
  int argc=(int)lua_tointeger(L,1);
- char** argv=lua_touserdata(L,2);
+ char** argv=(char**)lua_touserdata(L,2);
  const Proto* f;
  int i;
  if (!lua_checkstack(L,argc)) fatal("too many input files");
@@ -190,7 +193,7 @@ int main(int argc, char* argv[])
  argc-=i; argv+=i;
  if (argc<=0) usage("no input files given");
  L=luaL_newstate();
- if (L==NULL) fatal("not enough memory for state");
+ if (L==NULL) fatal("cannot create state: not enough memory");
  lua_pushcfunction(L,&pmain);
  lua_pushinteger(L,argc);
  lua_pushlightuserdata(L,argv);
@@ -200,7 +203,7 @@ int main(int argc, char* argv[])
 }
 
 /*
-** $Id: print.c,v 1.66 2010/10/26 09:07:52 lhf Exp $
+** $Id: print.c,v 1.67 2011/05/06 13:37:15 lhf Exp $
 ** print bytecodes
 ** See Copyright Notice in lua.h
 */
@@ -270,6 +273,7 @@ static void PrintConstant(const Proto* f, int i)
 }
 
 #define UPVALNAME(x) ((f->upvalues[x].name) ? getstr(f->upvalues[x].name) : "-")
+#define MYK(x)		(-1-(x))
 
 static void PrintCode(const Proto* f)
 {
@@ -293,23 +297,25 @@ static void PrintCode(const Proto* f)
   {
    case iABC:
     printf("%d",a);
-    if (getBMode(o)!=OpArgN) printf(" %d",ISK(b) ? (-1-INDEXK(b)) : b);
-    if (getCMode(o)!=OpArgN) printf(" %d",ISK(c) ? (-1-INDEXK(c)) : c);
+    if (getBMode(o)!=OpArgN) printf(" %d",ISK(b) ? (MYK(INDEXK(b))) : b);
+    if (getCMode(o)!=OpArgN) printf(" %d",ISK(c) ? (MYK(INDEXK(c))) : c);
     break;
    case iABx:
-    if (getBMode(o)==OpArgK) printf("%d %d",a,-bx); else printf("%d %d",a,bx);
+    printf("%d",a);
+    if (getBMode(o)==OpArgK) printf(" %d",MYK(bx));
+    if (getBMode(o)==OpArgU) printf(" %d",bx);
     break;
    case iAsBx:
-    if (o==OP_JMP) printf("%d",sbx); else printf("%d %d",a,sbx);
+    printf("%d %d",a,sbx);
     break;
    case iAx:
-    printf("%d",-1-ax);
+    printf("%d",MYK(ax));
     break;
   }
   switch (o)
   {
    case OP_LOADK:
-    if (bx>0) { printf("\t; "); PrintConstant(f,bx-1); }
+    printf("\t; "); PrintConstant(f,bx);
     break;
    case OP_GETUPVAL:
    case OP_SETUPVAL:
@@ -355,8 +361,7 @@ static void PrintCode(const Proto* f)
     printf("\t; %p",VOID(f->p[bx]));
     break;
    case OP_SETLIST:
-    if (c==0) printf("\t; %d",(int)code[++pc]);
-    else printf("\t; %d",c);
+    if (c==0) printf("\t; %d",(int)code[++pc]); else printf("\t; %d",c);
     break;
    case OP_EXTRAARG:
     printf("\t; "); PrintConstant(f,ax);

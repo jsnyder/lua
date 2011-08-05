@@ -1,5 +1,5 @@
 /*
-** $Id: lauxlib.h,v 1.113 2010/11/16 19:20:01 roberto Exp $
+** $Id: lauxlib.h,v 1.117 2011/06/16 14:10:12 roberto Exp $
 ** Auxiliary functions for building Lua libraries
 ** See Copyright Notice in lua.h
 */
@@ -62,6 +62,9 @@ LUALIB_API int (luaL_error) (lua_State *L, const char *fmt, ...);
 LUALIB_API int (luaL_checkoption) (lua_State *L, int narg, const char *def,
                                    const char *const lst[]);
 
+LUALIB_API int (luaL_fileresult) (lua_State *L, int stat, const char *fname);
+LUALIB_API int (luaL_execresult) (lua_State *L, int stat);
+
 /* pre-defined references */
 #define LUA_NOREF       (-2)
 #define LUA_REFNIL      (-1)
@@ -83,7 +86,7 @@ LUALIB_API const char *(luaL_gsub) (lua_State *L, const char *s, const char *p,
 
 LUALIB_API void (luaL_setfuncs) (lua_State *L, const luaL_Reg *l, int nup);
 
-LUALIB_API void (luaL_findtable) (lua_State *L, int idx, const char *fname);
+LUALIB_API int (luaL_getsubtable) (lua_State *L, int idx, const char *fname);
 
 LUALIB_API void (luaL_traceback) (lua_State *L, lua_State *L1,
                                   const char *msg, int level);
@@ -161,6 +164,7 @@ LUALIB_API char *(luaL_buffinitsize) (lua_State *L, luaL_Buffer *B, size_t sz);
 
 
 /* compatibility with old module system */
+#if defined(LUA_COMPAT_MODULE)
 
 LUALIB_API void (luaL_pushmodule) (lua_State *L, const char *modname,
                                    int sizehint);
@@ -168,6 +172,8 @@ LUALIB_API void (luaL_openlib) (lua_State *L, const char *libname,
                                 const luaL_Reg *l, int nup);
 
 #define luaL_register(L,n,l)	(luaL_openlib(L,(n),(l),0))
+
+#endif
 
 
 #endif
